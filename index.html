@@ -24,6 +24,9 @@
   textarea { min-height: 110px; resize: vertical; }
   button { font: inherit; font-weight: 650; background: var(--clay); color: #fff; border: 0; padding: 14px 26px; border-radius: 999px; cursor: pointer; justify-self: start; margin-top: 4px; }
   button:hover { transform: translateY(-1px); }
+  .hp { position: absolute; left: -9999px; }
+  .status { font-size: 14.5px; color: var(--ink-2); min-height: 1.4em; }
+  .status a { color: var(--clay); }
   .note { font-size: 13.5px; color: var(--ink-3); margin-top: 28px; }
   .note a { color: var(--clay); }
   footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--hair); font-size: 13px; color: var(--ink-3); }
@@ -40,24 +43,46 @@
     <li>Owned by Calco Studios Ltd, a UK company</li>
   </ul>
 
-  <form id="offer" action="mailto:hello@firststepalarm.com" method="get">
+  <form id="offer" novalidate>
     <div><label for="name">Your name</label><input id="name" name="name" autocomplete="name" required></div>
     <div><label for="email">Email</label><input id="email" name="email" type="email" autocomplete="email" required></div>
     <div><label for="offer-amount">Offer (GBP or USD)</label><input id="offer-amount" name="offer" placeholder="e.g. £1,500" required></div>
     <div><label for="message">Anything else</label><textarea id="message" name="message"></textarea></div>
+    <div class="hp" aria-hidden="true"><label for="website">Website</label><input id="website" name="website" tabindex="-1" autocomplete="off"></div>
     <button type="submit">Send offer</button>
+    <p class="status" id="status" role="status"></p>
   </form>
-  <p class="note">Sending opens your email app with the details filled in. Or write to <a href="mailto:hello@firststepalarm.com?subject=Offer%20for%20firstlightalarm.com">hello@firststepalarm.com</a> directly.</p>
+  <p class="note">Or write to <a href="mailto:hello@firststepalarm.com?subject=Offer%20for%20firstlightalarm.com">hello@firststepalarm.com</a> directly.</p>
 
   <footer>The alarm app that used to live here is now <a href="https://firststepalarm.com/" style="color:var(--ink-2)">First Step</a>. Old links on this domain still forward to it.</footer>
 </main>
 <script>
-  // A mailto form: build a readable email rather than a query string of field names.
-  document.getElementById("offer").addEventListener("submit", function (e) {
+  // Offers go straight into a Supabase table. The key below is the public
+  // one; the table's row-level policy only allows inserts for this domain,
+  // so nothing can be read or changed from here.
+  var SUPABASE_URL = "https://vspltchsonlcnrmhxbik.supabase.co";
+  var SUPABASE_KEY = "sb_publishable_nbGjNaOt8AEJgq71Rt4eCg__L3ClrRn";
+  var form = document.getElementById("offer"), status = document.getElementById("status"), button = form.querySelector("button");
+  var v = function (id) { return document.getElementById(id).value.trim(); };
+  form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var f = e.target, v = function (id) { return document.getElementById(id).value.trim(); };
-    var body = "Name: " + v("name") + "\nEmail: " + v("email") + "\nOffer: " + v("offer-amount") + "\n\n" + v("message");
-    location.href = "mailto:hello@firststepalarm.com?subject=" + encodeURIComponent("Offer for firstlightalarm.com") + "&body=" + encodeURIComponent(body);
+    if (v("website")) { status.textContent = "Thanks."; return; } // bots fill the hidden field
+    if (!v("name") || !v("email") || !v("offer-amount") || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v("email"))) {
+      status.textContent = "Please add your name, a valid email and an offer."; return;
+    }
+    button.disabled = true; status.textContent = "Sending\u2026";
+    fetch(SUPABASE_URL + "/rest/v1/domain_offers", {
+      method: "POST",
+      headers: { "apikey": SUPABASE_KEY, "Authorization": "Bearer " + SUPABASE_KEY, "Content-Type": "application/json", "Prefer": "return=minimal" },
+      body: JSON.stringify({ domain: "firstlightalarm.com", name: v("name"), email: v("email"), offer: v("offer-amount"), message: v("message") || null, user_agent: navigator.userAgent.slice(0, 300) })
+    }).then(function (r) {
+      if (!r.ok) throw new Error(r.status);
+      form.querySelectorAll("input, textarea").forEach(function (el) { el.disabled = true; });
+      button.textContent = "Offer sent"; status.textContent = "Thanks. You'll hear back within a couple of days.";
+    }).catch(function () {
+      button.disabled = false;
+      status.innerHTML = "That didn't send. Email <a href=\"mailto:hello@firststepalarm.com?subject=Offer%20for%20firstlightalarm.com\">hello@firststepalarm.com</a> instead.";
+    });
   });
 </script>
 </body>
